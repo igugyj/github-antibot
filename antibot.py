@@ -36,7 +36,7 @@ class Github:
     def get_number_of_followings(self, username: str) -> int:
         response = self._make_request(
             HTTPMethod.HEAD, f"/users/{username}/following",
-            # 1 result per page will ensure the next link indicates the total
+            # one result per page will ensure the next link indicates the total
             # number of users this user follows.
             params={"page": 1, "per_page": 1})
         if last := response.links.get("last"):
@@ -45,14 +45,14 @@ class Github:
         logger.warning("Could not get the nb of users %s follows", username)
         return 0
 
-    def get_followers(self) -> dict[str, Any]:
-        def paginate(next: str) -> dict[str, Any]:
+    def get_followers(self) -> list[dict[str, Any]]:
+        def paginate(next: str) -> list[dict[str, Any]]:
             response = self._make_request(HTTPMethod.GET, next)
             data.extend(response.json())
             if next := response.links.get("next"):
                 return paginate(next)
             return data
-        data = []
+        data: list[dict[str, Any]] = []
         return paginate(f"/users/{GH_USERNAME}/followers?page=1&per_page=100")
 
     def block_user(self, username: str) -> None:
