@@ -4,7 +4,7 @@ A bot to block bot abusers. I got tired of receiving notifications of users foll
 
 This repository runs a Github action every day to block users that follow me and follow already more than 20,000 users (which to me, are probably users using bots). No added value into keeping them on my Github.
 
-You will need to create a **Github PAT token** with the following permissions:
+You will need to create a [**Github PAT token**](https://github.com/settings/personal-access-tokens) with the following permissions:
 - Read-only - Followers
 - Read and write - Block another user
 
