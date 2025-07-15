@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -20,7 +22,7 @@ jobs:
           pip install -r requirements.txt
       - name: Block bot abusers
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_PAT: ${{ secrets.GH_PAT }}
           GH_USERNAME: ${{ github.actor }}
           # blocks any users with a follwing count above this
           # threshold, consider them as bot abusers.
@@ -30,3 +32,7 @@ jobs:
           ANTIBOT_WHITELIST: ''
         run: |
           python antibot.py
+          uuidgen > .keep_alive
+      - uses: stefanzweifel/git-auto-commit-action@v6
+        with:
+          commit_message: Keep alive
