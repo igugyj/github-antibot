@@ -4,9 +4,15 @@ Tired of spammy notifications from mass-following bot accounts? This repository 
 
 This action runs daily and checks your followers. If a user is following more than a defined threshold (default: 20,000), the action considers them likely a bot and blocks them. These accounts typically provide no value and clutter your followers list.
 
-To use this action, you'll need to create a [**Github PAT token**](https://github.com/settings/personal-access-tokens) with the following permissions:
-- Read-only - Followers
-- Read and write - Block another user
+To use this action, you'll need to create a [**Github PAT token**](https://github.com/settings/personal-access-tokens) with the following settings:
+- Repository access:
+    - Only select repositories (select this repository)
+- Permissions:
+    - Repository permissions:
+        - Contents: Read and Write
+    - Account permissions:
+        - Block another user: Read and write
+        - Followers: Read-only 
 
 Add this token as a repository secret named `GH_PAT`.
 
