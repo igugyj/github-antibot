@@ -28,7 +28,7 @@ You need to create a [GitHub Personal Access Token](https://github.com/settings/
   - `Blocking users`: Read and write
   - `Followers`: Read-only
 
-Once created, add the token as a secret to your repository with the name `GH_PAT`.
+Once created, add the token *as a repository secret* named `GH_PAT`. For instructions on how to add secrets, refer to [GitHub's documentation on encrypted secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets).
 
 ## Keep-Alive Mechanism
 
