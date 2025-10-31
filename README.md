@@ -1,4 +1,4 @@
-# GitHub Antibot Action
+# GitHub Antibot
 
 Tired of spammy notifications from mass-following bot accounts? This GitHub Action automatically blocks suspicious users who follow you, helping to keep your follower list clean and your notifications relevant.
 
