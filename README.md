@@ -1,30 +1,39 @@
-# Block bot abusers
+# GitHub Antibot Action
 
-Tired of spammy notifications from mass-following bot accounts? This repository contains a GitHub Action that automatically blocks suspicious users who follow you — particularly those who follow tens of thousands of other accounts just to boost their own follower count.
+Tired of spammy notifications from mass-following bot accounts? This GitHub Action automatically blocks suspicious users who follow you, helping to keep your follower list clean and your notifications relevant.
 
-This action runs daily and checks your followers. If a user is following more than a defined threshold (default: 20,000), the action considers them likely a bot and blocks them. These accounts typically provide no value and clutter your followers list.
+The action runs on a daily schedule, checking your followers. If a user is found to be following an excessive number of other accounts (i.e., above a configurable threshold), they are considered a bot and blocked.
 
-To use this action, you'll need to create a [**Github PAT token**](https://github.com/settings/personal-access-tokens) with the following settings:
-- Repository access:
-    - Only select repositories (select this repository)
-- Permissions:
-    - Repository permissions:
-        - Contents: Read and Write
-    - Account permissions:
-        - Block another user: Read and write
-        - Followers: Read-only 
+## Usage
 
-Add this token as a repository secret named `GH_PAT`.
+You should be able to fork this repository to use this. Just make sure to change the [configuration](#configuration) settings.
 
 ## Configuration
 
-The action supports the following environment variables for configuration:
+The action [antibot.yaml](./.github/workflows/antibot.yaml) is configured using environment variables:
 
-- `GH_USERNAME`: **Required.** Your GitHub username.
-- `GH_PAT`: **Required.** Your GitHub Personal Access Token.
-- `ANTIBOT_THRESHOLD`: The number of people a user must be following to be considered a bot (default: `20000`).
+- `GH_PAT`: **Required.** A GitHub Personal Access Token with the necessary permissions to block users and write to the repository. See [PAT Configuration](#pat-configuration) for details.
+- `ANTIBOT_THRESHOLD`: The number of accounts a user must be following to be considered a bot. Defaults to `20000`.
 - `ANTIBOT_WHITELIST`: A comma-separated list of usernames to exclude from blocking, even if they exceed the threshold.
 
-**Note:** The application also enforces a concurrent request limit of 50 to comply with GitHub's API restrictions (<100).
+**Note:** The `GH_USERNAME` is automatically determined from the user running the action (`github.actor`).
 
-GitHub Actions may stop running scheduled workflows for inactive repositories. To prevent this, each pipeline run updates the `.keep_alive` file with a new UUID and commits the change, ensuring continued activity and keeping the workflow alive over time.
+## PAT Configuration
+
+You need to create a [GitHub Personal Access Token](https://github.com/settings/personal-access-tokens) with the following permissions:
+
+- **Repository permissions:**
+  - `Contents`: Read and write (to update the `.keep_alive` file)
+- **Account permissions:**
+  - `Blocking users`: Read and write
+  - `Followers`: Read-only
+
+Once created, add the token as a secret to your repository with the name `GH_PAT`.
+
+## Keep-Alive Mechanism
+
+GitHub Actions may disable scheduled workflows on inactive repositories. To prevent this, the action updates a `.keep_alive` file with a new timestamp in each run. This small commit ensures the repository remains active, keeping the daily scans running.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
