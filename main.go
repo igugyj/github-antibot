@@ -307,7 +307,7 @@ func main() {
 
 	gh := NewGitHubClient(cfg.PAT, cfg.Username)
 
-	log.Printf("fetching followers for %s…", cfg.Username)
+	log.Printf("fetching followers for %s...", cfg.Username)
 	followers, err := gh.GetFollowers(ctx, cfg.Username)
 	if err != nil {
 		log.Fatalf("failed to fetch followers: %v", err)
