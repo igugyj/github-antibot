@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -10,238 +12,311 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
-var (
-	baseURL = "https://api.github.com"
+const (
+	defaultThreshold   = 20000
+	defaultConcurrency = 10
+	githubBaseURL      = "https://api.github.com"
+	apiVersion         = "2022-11-28"
 )
 
 type Config struct {
-	Username                    string
-	PAT                         string
-	Threshold                   int
-	Whitelist                   map[string]struct{}
-	ConcurrentRequestsSemaphore chan struct{}
+	Username      string
+	PAT           string
+	Threshold     int
+	Whitelist     map[string]struct{}
+	MaxConcurrent int
 }
 
-var config Config
+func ParseConfig(ghUsername, ghPat, thresholdStr, whitelistStr, concurrencyStr string) (Config, error) {
+	if ghUsername == "" {
+		return Config{}, errors.New("GH_USERNAME is required")
+	}
+	if ghPat == "" {
+		return Config{}, errors.New("GH_PAT is required")
+	}
+
+	threshold := defaultThreshold
+	if s := strings.TrimSpace(thresholdStr); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			threshold = v
+		}
+	}
+
+	maxConc := defaultConcurrency
+	if s := strings.TrimSpace(concurrencyStr); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			maxConc = v
+		}
+	}
+
+	wl := parseWhitelist(whitelistStr)
+
+	return Config{
+		Username:      ghUsername,
+		PAT:           ghPat,
+		Threshold:     threshold,
+		Whitelist:     wl,
+		MaxConcurrent: maxConc,
+	}, nil
+}
+
+func parseWhitelist(s string) map[string]struct{} {
+	if strings.TrimSpace(s) == "" {
+		return map[string]struct{}{}
+	}
+	items := strings.Split(s, ",")
+	out := make(map[string]struct{}, len(items))
+	for _, it := range items {
+		if v := strings.TrimSpace(it); v != "" {
+			out[v] = struct{}{}
+		}
+	}
+	return out
+}
+
+type GitHubClient struct {
+	BaseURL   string
+	HTTP      *http.Client
+	Token     string
+	UserAgent string
+}
+
+func NewGitHubClient(token, userAgent string) *GitHubClient {
+	return &GitHubClient{
+		BaseURL: githubBaseURL,
+		HTTP: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+		Token:     token,
+		UserAgent: userAgent,
+	}
+}
+
+func (c *GitHubClient) newRequest(
+	ctx context.Context,
+	method, endpoint string,
+	body io.Reader,
+) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+endpoint, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", apiVersion)
+	req.Header.Set("User-Agent", c.UserAgent)
+	return req, nil
+}
+
+func (c *GitHubClient) do(req *http.Request) (*http.Response, error) {
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to do request: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		const maxErr = 8 << 10 // 8KB
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxErr))
+		return nil, fmt.Errorf(
+			"github request returned status %s: %s",
+			resp.Status,
+			strings.TrimSpace(string(b)),
+		)
+	}
+	return resp, nil
+}
 
 type User struct {
 	Login     string `json:"login"`
 	Following int    `json:"following"`
 }
 
-func parseConfig(ghUsername, ghPat, thresholdStr, whitelistStr string) (Config, error) {
-	if ghUsername == "" {
-		return Config{}, fmt.Errorf("GH_USERNAME environment variable is required")
-	}
-	if ghPat == "" {
-		return Config{}, fmt.Errorf("GH_PAT environment variable is required")
-	}
-	if thresholdStr == "" {
-		thresholdStr = "20000"
-	}
-	antibotThreshold, err := strconv.Atoi(thresholdStr)
-	if err != nil {
-		log.Printf("Invalid ANTIBOT_THRESHOLD value, using default of 20000.")
-		antibotThreshold = 20000
-	}
+func (c *GitHubClient) GetFollowers(ctx context.Context, username string) ([]User, error) {
+	var out []User
+	endpoint := fmt.Sprintf("/users/%s/followers?per_page=100", url.PathEscape(username))
 
-	whitelistItems := strings.Split(whitelistStr, ",")
-	antibotWhitelist := make(map[string]struct{})
-	for _, item := range whitelistItems {
-		trimmed := strings.TrimSpace(item)
-		if trimmed != "" {
-			antibotWhitelist[trimmed] = struct{}{}
+	for endpoint != "" {
+		req, err := c.newRequest(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
 		}
-	}
+		resp, err := c.do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get followers page: %w", err)
+		}
+		func() {
+			defer resp.Body.Close()
+			var page []User
+			if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+				resp.Body.Close()
+				err = fmt.Errorf("failed to decode followers: %w", err)
+			} else {
+				out = append(out, page...)
+			}
+		}()
 
-	return Config{
-		Username:                    ghUsername,
-		PAT:                         ghPat,
-		Threshold:                   antibotThreshold,
-		Whitelist:                   antibotWhitelist,
-		ConcurrentRequestsSemaphore: make(chan struct{}, 10),
-	}, nil
+		next, ok := parseNextLink(resp.Header.Get("Link"))
+		if !ok {
+			break
+		}
+		endpoint = next
+	}
+	return out, nil
 }
 
-func loadConfig() {
+func (c *GitHubClient) GetFollowingCount(ctx context.Context, username string) (int, error) {
+	req, err := c.newRequest(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("/users/%s", url.PathEscape(username)),
+		nil,
+	)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := c.do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get user %s: %w", username, err)
+	}
+	defer resp.Body.Close()
+	var u User
+	if err := json.NewDecoder(resp.Body).Decode(&u); err != nil {
+		return 0, fmt.Errorf("failed to decode user %s: %w", username, err)
+	}
+	return u.Following, nil
+}
+
+func (c *GitHubClient) BlockUser(ctx context.Context, username string) error {
+	req, err := c.newRequest(
+		ctx,
+		http.MethodPut,
+		fmt.Sprintf("/user/blocks/%s", url.PathEscape(username)),
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+	resp, err := c.do(req)
+	if err != nil {
+		return fmt.Errorf("failed to block %s: %w", username, err)
+	}
+	resp.Body.Close()
+	return nil
+}
+
+// extracts the RequestURI for rel="next" from a Link header.
+// returns (endpoint, true) if present, otherwise ("", false).
+func parseNextLink(linkHeader string) (string, bool) {
+	if linkHeader == "" {
+		return "", false
+	}
+	links := strings.Split(linkHeader, ",")
+	for _, link := range links {
+		link = strings.TrimSpace(link)
+		if !strings.Contains(link, `rel="next"`) {
+			continue
+		}
+		if urlPart, _, ok := strings.Cut(link, ";"); ok {
+			nextURLStr := strings.Trim(urlPart, "<> \t")
+			u, err := url.Parse(nextURLStr)
+			if err != nil {
+				return "", false
+			}
+			return u.RequestURI(), true
+		}
+	}
+	return "", false
+}
+
+func ProcessFollowers(
+	ctx context.Context,
+	gh *GitHubClient,
+	cfg Config,
+	followers []User,
+) (int64, error) {
+	var blocked int64
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(cfg.MaxConcurrent)
+
+	for _, f := range followers {
+		username := f.Login // capture
+		if _, ok := cfg.Whitelist[username]; ok {
+			log.Printf("skip whitelisted: %s", username)
+			continue
+		}
+
+		g.Go(func() error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			count, err := gh.GetFollowingCount(ctx, username)
+			if err != nil {
+				log.Printf("failed to get following count for %s: %v", username, err)
+				return nil // do not block
+			}
+
+			if count >= cfg.Threshold {
+				log.Printf(
+					"blocking %s: following %d >= threshold %d",
+					username,
+					count,
+					cfg.Threshold,
+				)
+				if err := gh.BlockUser(ctx, username); err != nil {
+					log.Printf("block %s failed: %v", username, err)
+					return nil
+				}
+				atomic.AddInt64(&blocked, 1)
+			}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return blocked, err
+	}
+	return blocked, nil
+}
+
+func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	ghUsername := os.Getenv("GH_USERNAME")
 	ghPat := os.Getenv("GH_PAT")
 	thresholdStr := os.Getenv("ANTIBOT_THRESHOLD")
 	whitelistStr := os.Getenv("ANTIBOT_WHITELIST")
+	concurrencyStr := os.Getenv("ANTIBOT_CONCURRENCY") // optional
 
-	var err error
-	config, err = parseConfig(ghUsername, ghPat, thresholdStr, whitelistStr)
+	cfg, err := ParseConfig(ghUsername, ghPat, thresholdStr, whitelistStr, concurrencyStr)
 	if err != nil {
 		log.Fatal(err)
 	}
-}
 
-func request(method, endpoint string) (*http.Response, error) {
-	config.ConcurrentRequestsSemaphore <- struct{}{}
-	defer func() { <-config.ConcurrentRequestsSemaphore }()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
 
-	client := &http.Client{Timeout: time.Second * 10}
+	gh := NewGitHubClient(cfg.PAT, cfg.Username)
 
-	fullURL := baseURL + endpoint
-
-	req, err := http.NewRequest(method, fullURL, nil)
+	log.Printf("fetching followers for %s…", cfg.Username)
+	followers, err := gh.GetFollowers(ctx, cfg.Username)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		log.Fatalf("failed to fetch followers: %v", err)
 	}
+	log.Printf("found %d followers", len(followers))
 
-	req.Header.Set("Authorization", "Bearer "+config.PAT)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Set("User-Agent", config.Username)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+	blocked, err := ProcessFollowers(ctx, gh, cfg, followers)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		log.Printf("processing ended with error: %v", err)
 	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		defer resp.Body.Close()
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("request failed with status %s: %s", resp.Status, body)
-	}
-
-	return resp, nil
-}
-
-func getFollowers() ([]User, error) {
-	var followers []User
-	endpoint := fmt.Sprintf("/users/%s/followers?per_page=100", config.Username)
-
-	for endpoint != "" {
-		resp, err := request("GET", endpoint)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get followers page: %w", err)
-		}
-		defer resp.Body.Close()
-
-		var pageFollowers []User
-		if err := json.NewDecoder(resp.Body).Decode(&pageFollowers); err != nil {
-			return nil, fmt.Errorf("failed to decode followers: %w", err)
-		}
-		followers = append(followers, pageFollowers...)
-
-		linkHeader := resp.Header.Get("Link")
-		endpoint = "" // reset for next iteration
-		if linkHeader == "" {
-			continue
-		}
-
-		links := strings.Split(linkHeader, ",")
-		for _, link := range links {
-			if strings.Contains(link, `rel="next"`) {
-				parts := strings.Split(link, ";")
-				nextURLStr := strings.Trim(parts[0], "<> ")
-				nextURL, err := url.Parse(nextURLStr)
-				if err != nil {
-					log.Printf("Warning: failed to parse next page URL: %v", err)
-					continue
-				}
-				endpoint = nextURL.RequestURI()
-				break
-			}
-		}
-	}
-	return followers, nil
-}
-
-func getFollowingCount(username string) (int, error) {
-	endpoint := fmt.Sprintf("/users/%s", username)
-	resp, err := request("GET", endpoint)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get user details for %s: %w", username, err)
-	}
-	defer resp.Body.Close()
-
-	var user User
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
-		return 0, fmt.Errorf("failed to decode user details for %s: %w", username, err)
-	}
-	return user.Following, nil
-}
-
-func blockUser(username string) error {
-	endpoint := fmt.Sprintf("/user/blocks/%s", username)
-	resp, err := request("PUT", endpoint)
-	if err != nil {
-		return fmt.Errorf("failed to block user %s: %w", username, err)
-	}
-	defer resp.Body.Close()
-	log.Printf("Blocked user: %s", username)
-	return nil
-}
-
-func processFollowers(followers []User) {
-	var wg sync.WaitGroup
-	jobs := make(chan string, len(followers))
-	results := make(chan bool, len(followers))
-
-	numWorkers := 10
-	for w := 1; w <= numWorkers; w++ {
-		wg.Add(1)
-		go worker(&wg, jobs, results)
-	}
-
-	for _, follower := range followers {
-		jobs <- follower.Login
-	}
-	close(jobs)
-
-	wg.Wait()
-	close(results)
-
-	blockedCount := 0
-	for range results {
-		blockedCount++
-	}
-
-	log.Printf("Finished. Blocked %d users.", blockedCount)
-}
-
-func worker(wg *sync.WaitGroup, jobs <-chan string, results chan<- bool) {
-	defer wg.Done()
-	for username := range jobs {
-		if _, isWhitelisted := config.Whitelist[username]; isWhitelisted {
-			log.Printf("Skipping whitelisted user: %s", username)
-			continue
-		}
-
-		followingCount, err := getFollowingCount(username)
-		if err != nil {
-			log.Printf("Could not determine following count for %s: %v", username, err)
-			continue
-		}
-		log.Printf("User %s is following %d users.", username, followingCount)
-
-		if followingCount >= config.Threshold {
-			log.Printf("User %s is following %d users, which is over the threshold of %d. Blocking.", username, followingCount, config.Threshold)
-			if err := blockUser(username); err != nil {
-				log.Printf("Failed to block user %s: %v", username, err)
-			} else {
-				results <- true
-			}
-		}
-	}
-}
-
-func main() {
-	loadConfig()
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.Printf("Fetching followers for %s...", config.Username)
-
-	followers, err := getFollowers()
-	if err != nil {
-		log.Fatalf("Failed to fetch followers: %v", err)
-	}
-	log.Printf("Found %d followers.", len(followers))
-
-	processFollowers(followers)
+	log.Printf("finished. blocked %d users.", blocked)
 }
