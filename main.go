@@ -63,7 +63,7 @@ func parseConfig(ghUsername, ghPat, thresholdStr, whitelistStr string) (Config, 
 		PAT:                         ghPat,
 		Threshold:                   antibotThreshold,
 		Whitelist:                   antibotWhitelist,
-		ConcurrentRequestsSemaphore: make(chan struct{}, 50),
+		ConcurrentRequestsSemaphore: make(chan struct{}, 10),
 	}, nil
 }
 
@@ -184,7 +184,7 @@ func processFollowers(followers []User) {
 	jobs := make(chan string, len(followers))
 	results := make(chan bool, len(followers))
 
-	numWorkers := 50
+	numWorkers := 10
 	for w := 1; w <= numWorkers; w++ {
 		wg.Add(1)
 		go worker(&wg, jobs, results)
