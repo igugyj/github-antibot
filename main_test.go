@@ -250,9 +250,9 @@ func TestGetFollowers_Pagination(t *testing.T) {
 	}
 
 	gh := &GitHubClient{
-		BaseURL: srv.URL,
-		HTTP:    &http.Client{Timeout: 5 * time.Second},
-		Token:   "t",
+		BaseURL:   srv.URL,
+		HTTP:      &http.Client{Timeout: 5 * time.Second},
+		Token:     "t",
 		UserAgent: "alice",
 	}
 

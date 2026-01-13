@@ -33,6 +33,13 @@ type Config struct {
 	MaxConcurrent int
 }
 
+func parsePositiveInt(s string, defaultVal int) int {
+	if v, err := strconv.Atoi(strings.TrimSpace(s)); err == nil && v > 0 {
+		return v
+	}
+	return defaultVal
+}
+
 func ParseConfig(ghUsername, ghPat, thresholdStr, whitelistStr, concurrencyStr string) (Config, error) {
 	if ghUsername == "" {
 		return Config{}, errors.New("GH_USERNAME is required")
@@ -40,40 +47,19 @@ func ParseConfig(ghUsername, ghPat, thresholdStr, whitelistStr, concurrencyStr s
 	if ghPat == "" {
 		return Config{}, errors.New("GH_PAT is required")
 	}
-
-	threshold := defaultThreshold
-	if s := strings.TrimSpace(thresholdStr); s != "" {
-		if v, err := strconv.Atoi(s); err == nil && v > 0 {
-			threshold = v
-		}
-	}
-
-	maxConc := defaultConcurrency
-	if s := strings.TrimSpace(concurrencyStr); s != "" {
-		if v, err := strconv.Atoi(s); err == nil && v > 0 {
-			maxConc = v
-		}
-	}
-
-	wl := parseWhitelist(whitelistStr)
-
 	return Config{
 		Username:      ghUsername,
 		PAT:           ghPat,
-		Threshold:     threshold,
-		Whitelist:     wl,
-		MaxConcurrent: maxConc,
+		Threshold:     parsePositiveInt(thresholdStr, defaultThreshold),
+		Whitelist:     parseWhitelist(whitelistStr),
+		MaxConcurrent: parsePositiveInt(concurrencyStr, defaultConcurrency),
 	}, nil
 }
 
 func parseWhitelist(s string) map[string]struct{} {
-	if strings.TrimSpace(s) == "" {
-		return map[string]struct{}{}
-	}
-	items := strings.Split(s, ",")
-	out := make(map[string]struct{}, len(items))
-	for _, it := range items {
-		if v := strings.TrimSpace(it); v != "" {
+	out := map[string]struct{}{}
+	for item := range strings.SplitSeq(s, ",") {
+		if v := strings.TrimSpace(item); v != "" {
 			out[v] = struct{}{}
 		}
 	}
