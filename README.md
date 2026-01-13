@@ -2,11 +2,25 @@
 
 Tired of spammy notifications from mass-following bot accounts? This GitHub Action automatically blocks suspicious users who follow you, helping to keep your follower list clean and your notifications relevant.
 
-The action runs on a daily schedule, checking your followers. If a user is found to be following an excessive number of other accounts (i.e., above a configurable threshold), they are considered a bot and blocked.
+## How It Works
+
+1. The action runs daily (or on-demand via workflow dispatch)
+2. Fetches your current list of followers
+3. For each follower, checks how many accounts they are following
+4. If that count exceeds the threshold (default: 20,000), the user is blocked
+5. Whitelisted users are skipped regardless of their following count
+
+The default threshold of 20,000 is based on the observation that legitimate users rarely follow more than a few thousand accounts. Mass-following bots, on the other hand, often follow tens of thousands of accounts to trigger follow-back notifications.
 
 ## Usage
 
-You should be able to fork this repository to use this. Just make sure to change the [configuration](#configuration) settings.
+1. **Fork this repository** to your GitHub account
+2. **Create a Personal Access Token** with the required permissions (see [PAT Configuration](#pat-configuration))
+3. **Add the token as a repository secret** named `GH_PAT`
+4. **Adjust the configuration** in [antibot.yaml](./.github/workflows/antibot.yaml) if needed
+5. **Enable GitHub Actions** on your fork if not already enabled
+
+The action will run automatically every day at midnight UTC. You can also trigger it manually from the Actions tab using "Run workflow".
 
 ## Configuration
 
@@ -30,10 +44,19 @@ You need to create a [GitHub Personal Access Token](https://github.com/settings/
 
 Once created, add the token *as a repository secret* named `GH_PAT`. For instructions on how to add secrets, refer to [GitHub's documentation on encrypted secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets).
 
+## Example Output
+
+When the action runs, you'll see output like this in the workflow logs:
+
+```
+2024/01/15 00:00:01 main.go:282: fetching followers for your-username...
+2024/01/15 00:00:02 main.go:287: found 150 followers
+2024/01/15 00:00:03 main.go:231: skip whitelisted: trusted-user
+2024/01/15 00:00:04 main.go:243: blocking spam-bot-123: following 45000 >= threshold 20000
+2024/01/15 00:00:05 main.go:243: blocking mass-follower: following 32000 >= threshold 20000
+2024/01/15 00:00:06 main.go:290: finished. blocked 2 users.
+```
+
 ## Keep-Alive Mechanism
 
 GitHub Actions may disable scheduled workflows on inactive repositories. To prevent this, the action updates a `.keep_alive` file with a new timestamp in each run. This small commit ensures the repository remains active, keeping the daily scans running.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
