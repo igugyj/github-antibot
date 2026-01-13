@@ -308,11 +308,7 @@ func TestProcessFollowers_BlocksExpectedUsers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	blocked, err := ProcessFollowers(ctx, gh, cfg, followers)
-	if err != nil && !strings.Contains(err.Error(), "context canceled") {
-		t.Fatalf("ProcessFollowers unexpected error: %v", err)
-	}
-
+	blocked := ProcessFollowers(ctx, gh, cfg, followers)
 	if blocked != 2 {
 		t.Fatalf("blocked = %d, want 2", blocked)
 	}

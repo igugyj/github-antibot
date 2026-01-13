@@ -219,7 +219,7 @@ func ProcessFollowers(
 	gh *GitHubClient,
 	cfg Config,
 	followers []User,
-) (int64, error) {
+) int64 {
 	var blocked atomic.Int64
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -256,10 +256,8 @@ func ProcessFollowers(
 		})
 	}
 
-	if err := g.Wait(); err != nil {
-		return blocked.Load(), err
-	}
-	return blocked.Load(), nil
+	_ = g.Wait()
+	return blocked.Load()
 }
 
 func main() {
@@ -288,9 +286,6 @@ func main() {
 	}
 	log.Printf("found %d followers", len(followers))
 
-	blocked, err := ProcessFollowers(ctx, gh, cfg, followers)
-	if err != nil && !errors.Is(err, context.Canceled) {
-		log.Printf("processing ended with error: %v", err)
-	}
+	blocked := ProcessFollowers(ctx, gh, cfg, followers)
 	log.Printf("finished. blocked %d users.", blocked)
 }

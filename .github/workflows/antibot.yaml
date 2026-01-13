@@ -12,8 +12,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -30,9 +28,7 @@ jobs:
           # comma separated list of usernames to whitelist (do
           # not block even if above threshold)
           ANTIBOT_WHITELIST: ''
-        run: |
-          go run main.go
-          uuidgen > .keep_alive
+        run: go run main.go && uuidgen > .keep_alive
       - uses: stefanzweifel/git-auto-commit-action@v6
         with:
           commit_message: Keep alive
