@@ -232,15 +232,10 @@ func cloneValues(v url.Values) url.Values {
 	return out
 }
 
-func atoi(s string) int {
-	n, _ := strconv.Atoi(s)
-	return n
-}
-
 func TestGetFollowers_Pagination(t *testing.T) {
 	st := &srvState{}
 	srv := newTestServer(t, st)
-	defer srv.Close()
+	t.Cleanup(srv.Close)
 
 	// seed 2 pages: page=1 (2 users), page=2 (1 user)
 	basePath := "/users/alice/followers"
@@ -276,7 +271,7 @@ func TestGetFollowers_Pagination(t *testing.T) {
 func TestProcessFollowers_BlocksExpectedUsers(t *testing.T) {
 	st := &srvState{}
 	srv := newTestServer(t, st)
-	defer srv.Close()
+	t.Cleanup(srv.Close)
 
 	// following counts for users
 	st.following["spam1"] = 50000 // should be blocked

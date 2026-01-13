@@ -105,7 +105,7 @@ func (c *GitHubClient) newRequest(
 ) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+endpoint, body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -150,16 +150,14 @@ func (c *GitHubClient) GetFollowers(ctx context.Context, username string) ([]Use
 		if err != nil {
 			return nil, fmt.Errorf("failed to get followers page: %w", err)
 		}
-		func() {
-			defer resp.Body.Close()
-			var page []User
-			if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-				resp.Body.Close()
-				err = fmt.Errorf("failed to decode followers: %w", err)
-			} else {
-				out = append(out, page...)
-			}
-		}()
+
+		var page []User
+		err = json.NewDecoder(resp.Body).Decode(&page)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode followers: %w", err)
+		}
+		out = append(out, page...)
 
 		next, ok := parseNextLink(resp.Header.Get("Link"))
 		if !ok {
@@ -210,14 +208,10 @@ func (c *GitHubClient) BlockUser(ctx context.Context, username string) error {
 	return nil
 }
 
-// extracts the RequestURI for rel="next" from a Link header.
-// returns (endpoint, true) if present, otherwise ("", false).
+// parseNextLink extracts the RequestURI for rel="next" from a Link header.
+// It returns (endpoint, true) if present, otherwise ("", false).
 func parseNextLink(linkHeader string) (string, bool) {
-	if linkHeader == "" {
-		return "", false
-	}
-	links := strings.Split(linkHeader, ",")
-	for _, link := range links {
+	for link := range strings.SplitSeq(linkHeader, ",") {
 		link = strings.TrimSpace(link)
 		if !strings.Contains(link, `rel="next"`) {
 			continue
@@ -240,25 +234,19 @@ func ProcessFollowers(
 	cfg Config,
 	followers []User,
 ) (int64, error) {
-	var blocked int64
+	var blocked atomic.Int64
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(cfg.MaxConcurrent)
 
 	for _, f := range followers {
-		username := f.Login // capture
+		username := f.Login
 		if _, ok := cfg.Whitelist[username]; ok {
 			log.Printf("skip whitelisted: %s", username)
 			continue
 		}
 
 		g.Go(func() error {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-
 			count, err := gh.GetFollowingCount(ctx, username)
 			if err != nil {
 				log.Printf("failed to get following count for %s: %v", username, err)
@@ -276,16 +264,16 @@ func ProcessFollowers(
 					log.Printf("block %s failed: %v", username, err)
 					return nil
 				}
-				atomic.AddInt64(&blocked, 1)
+				blocked.Add(1)
 			}
 			return nil
 		})
 	}
 
 	if err := g.Wait(); err != nil {
-		return blocked, err
+		return blocked.Load(), err
 	}
-	return blocked, nil
+	return blocked.Load(), nil
 }
 
 func main() {
