@@ -15,7 +15,7 @@ run: ## Run the Go application
 
 .PHONY: test
 test: ## Run the Go tests
-	go test -v ./...
+	go test -v -race ./...
 
 .PHONY: tidy
 tidy: ## Tidy the Go module dependencies
