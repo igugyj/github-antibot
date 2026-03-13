@@ -11,9 +11,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
       - name: Tidy dependencies
@@ -29,7 +29,7 @@ jobs:
           # not block even if above threshold)
           ANTIBOT_WHITELIST: ''
         run: go run main.go && uuidgen > .keep_alive
-      - uses: stefanzweifel/git-auto-commit-action@v6
+      - uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: Keep alive
           commit_author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
