@@ -1,5 +1,5 @@
 {
-  "username": "your-github-username",
+  "username": "igugyj",
   "threshold": 20000,
   "whitelist_file": "whitelist.txt",
   "blacklist_file": "blacklist.txt",
@@ -9,7 +9,7 @@
   "data_dir": "data",
   "report": {
     "issue": true,
-    "issue_repo": "your-github-username/github-antibot"
+    "issue_repo": "igugyj/github-antibot"
   },
   "schedule": {
     "cron": "0 0 * * 0"
