@@ -1,0 +1,5 @@
+# Users in this file are blocked immediately, regardless of their following
+# count. One username per line. Lines starting with # are comments.
+# Usernames are matched case-insensitively.
+# Example:
+# spam-bot-123

@@ -1,0 +1,17 @@
+{
+  "username": "your-github-username",
+  "threshold": 20000,
+  "whitelist_file": "whitelist.txt",
+  "blacklist_file": "blacklist.txt",
+  "concurrency": 10,
+  "timeout_sec": 120,
+  "dry_run": false,
+  "data_dir": "data",
+  "report": {
+    "issue": true,
+    "issue_repo": "your-github-username/github-antibot"
+  },
+  "schedule": {
+    "cron": "0 0 * * 0"
+  }
+}

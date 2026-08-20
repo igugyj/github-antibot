@@ -1,0 +1,5 @@
+# Users in this file are never blocked, even if they exceed the threshold.
+# One username per line. Lines starting with # are comments.
+# Usernames are matched case-insensitively.
+# Example:
+# trusted-user

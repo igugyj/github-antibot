@@ -1,62 +1,78 @@
 # GitHub Antibot
 
-Tired of spammy notifications from mass-following bot accounts? This GitHub Action automatically blocks suspicious users who follow you, helping to keep your follower list clean and your notifications relevant.
+Tired of spammy notifications from mass-following bot accounts? This GitHub Action automatically blocks suspicious users who follow you, keeping your follower list clean and your notifications relevant.
 
 ## How It Works
 
-1. The action runs daily (or on-demand via workflow dispatch)
-2. Fetches your current list of followers
-3. For each follower, checks how many accounts they are following
-4. If that count exceeds the threshold (default: 20,000), the user is blocked
-5. Whitelisted users are skipped regardless of their following count
-
-The default threshold of 20,000 is based on the observation that legitimate users rarely follow more than a few thousand accounts. Mass-following bots, on the other hand, often follow tens of thousands of accounts to trigger follow-back notifications.
+1. The action runs on a schedule (or on-demand via workflow dispatch)
+2. It reads your settings from `config.json`
+3. It fetches your current followers
+4. For each follower it applies, in order:
+   - **Whitelist** (`whitelist.txt`): never blocked, skipped entirely
+   - **Blacklist** (`blacklist.txt`): blocked immediately whatever their following count
+   - **Already blocked** (persisted in `data/blocked.json`): skipped, no repeat API calls
+   - **Threshold**: users following more than the configured threshold are blocked
+5. Results are persisted, reported, and committed back to the repository
 
 ## Usage
 
 1. **Fork this repository** to your GitHub account
-2. **Create a Personal Access Token** with the required permissions (see [PAT Configuration](#pat-configuration))
+2. **Create a Personal Access Token** (see [PAT Configuration](#pat-configuration))
 3. **Add the token as a repository secret** named `GH_PAT`
-4. **Adjust the configuration** in [antibot.yaml](./.github/workflows/antibot.yaml) if needed
+4. **Configure** [config.json](./config.json), [whitelist.txt](./whitelist.txt) and [blacklist.txt](./blacklist.txt)
 5. **Enable GitHub Actions** on your fork if not already enabled
-
-The action will run automatically every day at midnight UTC. You can also trigger it manually from the Actions tab using "Run workflow".
 
 ## Configuration
 
-The action [antibot.yaml](./.github/workflows/antibot.yaml) is configured using environment variables:
+All settings live in [config.json](./config.json):
 
-- `GH_PAT`: **Required.** A GitHub Personal Access Token with the necessary permissions to block users and write to the repository. See [PAT Configuration](#pat-configuration) for details.
-- `ANTIBOT_THRESHOLD`: The number of accounts a user must be following to be considered a bot. Defaults to `20000`.
-- `ANTIBOT_WHITELIST`: A comma-separated list of usernames to exclude from blocking, even if they exceed the threshold.
+| Field | Default | Description |
+|---|---|---|
+| `username` | — (required) | Your GitHub username. Which account's followers are scanned. |
+| `threshold` | `20000` | Users following at least this many accounts are treated as bots. |
+| `whitelist_file` | `whitelist.txt` | File with one username per line, `#` for comments. Never blocked. |
+| `blacklist_file` | `blacklist.txt` | File with one username per line, `#` for comments. Blocked immediately. |
+| `concurrency` | `10` | Parallel lookups/blocking. |
+| `timeout_sec` | `60` | Overall run timeout. Raise it for large follower lists. |
+| `dry_run` | `false` | `true` = report what *would* be blocked, block nothing. **Try this first.** |
+| `data_dir` | `data` | Where `blocked.json` and daily reports are stored (committed to the repo). |
+| `report.issue` | `false` | Open a GitHub issue when new users are blocked. |
+| `report.issue_repo` | — | Repo for the issue, e.g. `alice/github-antibot`. |
+| `schedule.cron` | `0 0 * * *` | Informational only — the cron in `.github/workflows/antibot.yaml` is what GitHub actually runs. Keep the two in sync. |
 
-**Note:** The `GH_USERNAME` is automatically determined from the user running the action (`github.actor`).
+Usernames in whitelist/blacklist are matched case-insensitively.
+
+The token (`GH_PAT`) is **not** read from any config file — it comes from the environment, so it never lands in the repository.
+
+### Safety first
+
+Start with `"dry_run": true`, run the workflow once, and review the report to
+see exactly who would be blocked before letting it block anyone. Blocks are
+one-sided and silent: the blocked user is not notified and cannot unblock
+themselves, so check the whitelist regularly.
+
+## Reporting
+
+Every run produces three surfaces:
+
+- **`data/reports/YYYY-MM-DD.md`** — the full daily report, committed to the repo
+- **Workflow step summary** — visible on the Actions run page
+- **GitHub issue** (if enabled) — opened only when new users were blocked, so you get a notification
+
+`data/blocked.json` holds the persistent record of every blocked user with the
+date and reason. It is committed back so past actions stay auditable and
+already-blocked users are never examined twice.
 
 ## PAT Configuration
 
-You need to create a [GitHub Personal Access Token](https://github.com/settings/personal-access-tokens) with the following permissions:
+Create a [Personal Access Token](https://github.com/settings/personal-access-tokens) (fine-grained) with:
 
-- **Repository permissions:**
-  - `Contents`: Read and write (to update the `.keep_alive` file)
-- **Account permissions:**
-  - `Blocking users`: Read and write
-  - `Followers`: Read-only
+- **Repository permissions:** `Contents` (read and write, for the keep-alive/data commits), `Issues` (read and write, only if `report.issue` is enabled)
+- **Account permissions:** `Blocking users` (read and write), `Followers` (read-only)
 
-Once created, add the token *as a repository secret* named `GH_PAT`. For instructions on how to add secrets, refer to [GitHub's documentation on encrypted secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets).
-
-## Example Output
-
-When the action runs, you'll see output like this in the workflow logs:
-
-```
-2024/01/15 00:00:01 main.go:282: fetching followers for your-username...
-2024/01/15 00:00:02 main.go:287: found 150 followers
-2024/01/15 00:00:03 main.go:231: skip whitelisted: trusted-user
-2024/01/15 00:00:04 main.go:243: blocking spam-bot-123: following 45000 >= threshold 20000
-2024/01/15 00:00:05 main.go:243: blocking mass-follower: following 32000 >= threshold 20000
-2024/01/15 00:00:06 main.go:290: finished. blocked 2 users.
-```
+The token must belong to the same account as `username` in `config.json` — the
+blocking API only ever acts as the token owner.
 
 ## Keep-Alive Mechanism
 
-GitHub Actions may disable scheduled workflows on inactive repositories. To prevent this, the action updates a `.keep_alive` file with a new timestamp in each run. This small commit ensures the repository remains active, keeping the daily scans running.
+GitHub Actions may disable scheduled workflows on inactive repositories. Each run refreshes the `.keep_alive` file and commits the new report/data, keeping the daily schedule alive.
