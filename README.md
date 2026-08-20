@@ -38,6 +38,7 @@ All settings live in [config.json](./config.json):
 | `data_dir` | `data` | Where `blocked.json` and daily reports are stored (committed to the repo). |
 | `report.issue` | `false` | Open a GitHub issue when new users are blocked. |
 | `report.issue_repo` | — | Repo for the issue, e.g. `alice/github-antibot`. |
+| `report.max_reports` | `5` | Keep only this many newest report files in `data/reports/`; older ones are deleted after each run. |
 | `schedule.cron` | `0 0 * * *` | Informational only — the cron in `.github/workflows/antibot.yaml` is what GitHub actually runs. Keep the two in sync. |
 
 Usernames in whitelist/blacklist are matched case-insensitively.

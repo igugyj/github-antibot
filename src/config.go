@@ -13,6 +13,7 @@ const (
 	defaultConcurrency = 10
 	defaultTimeoutSec  = 60
 	defaultDataDir     = "data"
+	defaultMaxReports  = 5
 )
 
 type Config struct {
@@ -33,8 +34,9 @@ type Config struct {
 }
 
 type ReportConfig struct {
-	Issue     bool   `json:"issue"`
-	IssueRepo string `json:"issue_repo"`
+	Issue      bool   `json:"issue"`
+	IssueRepo  string `json:"issue_repo"`
+	MaxReports int    `json:"max_reports"`
 }
 
 // Schedule is informational: GitHub Actions only honors the cron inside the
@@ -79,6 +81,9 @@ func (c *Config) finalize(pat string) error {
 	}
 	if c.DataDir == "" {
 		c.DataDir = defaultDataDir
+	}
+	if c.Report.MaxReports <= 0 {
+		c.Report.MaxReports = defaultMaxReports
 	}
 
 	var err error

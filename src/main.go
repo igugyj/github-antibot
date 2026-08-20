@@ -65,6 +65,10 @@ func main() {
 	// GitHub Actions step summary.
 	fmt.Print(report)
 
+	if err := cleanupReports(filepath.Join(cfg.DataDir, "reports"), cfg.Report.MaxReports); err != nil {
+		log.Printf("failed to clean up old reports: %v", err)
+	}
+
 	newlyBlocked := countAction(results, "blocked")
 	if newlyBlocked > 0 && cfg.Report.Issue && cfg.Report.IssueRepo != "" {
 		title := fmt.Sprintf("Antibot: blocked %d user(s) on %s", newlyBlocked, date)

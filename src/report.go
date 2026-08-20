@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -81,6 +83,36 @@ func sortResults(rs []ActionResult) {
 	sort.Slice(rs, func(i, j int) bool {
 		return strings.ToLower(rs[i].Username) < strings.ToLower(rs[j].Username)
 	})
+}
+
+// cleanupReports deletes report files beyond the newest max. Called after each
+// run, so the reports directory never grows past maxReports files.
+func cleanupReports(dir string, max int) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	if len(names) <= max {
+		return nil
+	}
+	removed := 0
+	for _, n := range names[:len(names)-max] {
+		if err := os.Remove(filepath.Join(dir, n)); err != nil {
+			return err
+		}
+		removed++
+	}
+	if removed > 0 {
+		fmt.Printf("removed %d old report(s), keeping newest %d\n", removed, max)
+	}
+	return nil
 }
 
 type issuePayload struct {

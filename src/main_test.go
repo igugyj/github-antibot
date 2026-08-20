@@ -65,6 +65,9 @@ func TestLoadConfig(t *testing.T) {
 		if cfg.DataDir != defaultDataDir {
 			t.Errorf("DataDir = %q, want %q", cfg.DataDir, defaultDataDir)
 		}
+		if cfg.Report.MaxReports != defaultMaxReports {
+			t.Errorf("MaxReports = %d, want %d", cfg.Report.MaxReports, defaultMaxReports)
+		}
 		// case-insensitive, comments stripped
 		for _, u := range []string{"bob", "BOB", "Carol"} {
 			if !cfg.IsWhitelisted(u) {
@@ -676,6 +679,51 @@ func TestBuildReport(t *testing.T) {
 	// sorted: spam1 before spam2
 	if strings.Index(report, "spam1") > strings.Index(report, "spam2") {
 		t.Error("newly blocked rows not sorted")
+	}
+}
+
+func TestCleanupReports(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	mk := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 7 reports, one non-report file, one subdir — none of the latter two may be touched.
+	mk("2026-08-14.md")
+	mk("2026-08-15.md")
+	mk("2026-08-16.md")
+	mk("2026-08-17.md")
+	mk("2026-08-18.md")
+	mk("2026-08-19.md")
+	mk("2026-08-20.md")
+	mk("notes.txt")
+	os.MkdirAll(filepath.Join(dir, "sub"), 0o755)
+
+	if err := cleanupReports(dir, 5); err != nil {
+		t.Fatalf("cleanupReports error: %v", err)
+	}
+
+	entries, _ := os.ReadDir(dir)
+	got := map[string]bool{}
+	for _, e := range entries {
+		got[e.Name()] = true
+	}
+	for _, want := range []string{"2026-08-16.md", "2026-08-17.md", "2026-08-18.md", "2026-08-19.md", "2026-08-20.md"} {
+		if !got[want] {
+			t.Errorf("missing report %s after cleanup", want)
+		}
+	}
+	for _, stale := range []string{"2026-08-14.md", "2026-08-15.md"} {
+		if got[stale] {
+			t.Errorf("old report %s should have been removed", stale)
+		}
+	}
+	if !got["notes.txt"] || !got["sub"] {
+		t.Error("non-report entries should be untouched")
 	}
 }
 
