@@ -20,4 +20,6 @@ jobs:
       - name: Run tests
         run: go test -race ./...
       - name: Build
-        run: go build -v ./...
+        # Build to /dev/null: ./src is a directory, so a default-named
+        # executable ("src") would collide with it.
+        run: go build -o /dev/null ./src
