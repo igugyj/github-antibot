@@ -80,25 +80,3 @@ func main() {
 
 	smokeTestIssue(gh, cfg)
 }
-
-// smokeTestIssue verifies the issue-reporting path end-to-end by creating a
-// real issue. Enabled with ANTIBOT_SMOKE_TEST=1 so scheduled runs stay quiet.
-func smokeTestIssue(gh *GitHubClient, cfg Config) {
-	if os.Getenv("ANTIBOT_SMOKE_TEST") != "1" {
-		return
-	}
-	if cfg.Report.IssueRepo == "" {
-		log.Printf("smoke test: skipped, report.issue_repo is empty")
-		return
-	}
-	// Independent context: the main scan timeout may already be spent.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	title := "Antibot smoke test " + time.Now().UTC().Format("20060102-150405")
-	body := "Automated test of the issue-reporting path. Safe to close and delete.\n\nIf you are reading this, OpenIssue works."
-	if err := gh.OpenIssue(ctx, cfg.Report.IssueRepo, title, body); err != nil {
-		log.Printf("smoke test: FAILED to open issue: %v", err)
-		return
-	}
-	log.Printf("smoke test: OK, issue created in %s: %q", cfg.Report.IssueRepo, title)
-}
