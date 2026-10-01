@@ -123,22 +123,32 @@ type issuePayload struct {
 // OpenIssue creates an issue in the given repo ("owner/name"). Used to notify
 // the user when new users were blocked.
 func (c *GitHubClient) OpenIssue(ctx context.Context, repo, title, body string) error {
+	// Validate repo format: exactly "owner/name".
 	if strings.HasPrefix(repo, "/") || strings.Contains(repo, "..") {
 		return fmt.Errorf("invalid issue repo %q", repo)
 	}
+	parts := strings.Split(repo, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("invalid repo format %q, expected 'owner/name'", repo)
+	}
+
 	payload, err := json.Marshal(issuePayload{Title: title, Body: body})
 	if err != nil {
 		return err
 	}
+	// Escape owner and name separately: escaping "owner/name" as a whole turns
+	// the "/" into "%2F", which GitHub's routing rejects.
 	req, err := c.newRequest(
 		ctx,
 		http.MethodPost,
-		"/repos/"+url.PathEscape(repo)+"/issues",
+		"/repos/"+url.PathEscape(parts[0])+"/"+url.PathEscape(parts[1])+"/issues",
 		bytes.NewReader(payload),
 	)
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Content-Type", "application/json")
+
 	resp, err := c.do(req)
 	if err != nil {
 		return fmt.Errorf("failed to open issue: %w", err)
