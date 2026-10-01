@@ -22,7 +22,6 @@ jobs:
       - name: Block bot abusers
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
-          ANTIBOT_SMOKE_TEST: "1"
         run: bash scripts/run.sh
       - uses: stefanzweifel/git-auto-commit-action@v7
         with:

@@ -37,6 +37,7 @@ type ReportConfig struct {
 	Issue      bool   `json:"issue"`
 	IssueRepo  string `json:"issue_repo"`
 	MaxReports int    `json:"max_reports"`
+	SmokeTest  bool   `json:"smoke_test"`
 }
 
 // Schedule is informational: GitHub Actions only honors the cron inside the

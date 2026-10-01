@@ -10,7 +10,8 @@
   "report": {
     "issue": true,
     "issue_repo": "igugyj/github-antibot",
-    "max_reports": 5
+    "max_reports": 5,
+    "smoke_test": false
   },
   "schedule": {
     "cron": "0 0 * * 0"

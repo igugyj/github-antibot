@@ -39,6 +39,7 @@ All settings live in [config.json](./config.json):
 | `report.issue` | `false` | Open a GitHub issue when new users are blocked. |
 | `report.issue_repo` | — | Repo for the issue, e.g. `alice/github-antibot`. |
 | `report.max_reports` | `5` | Keep only this many newest report files in `data/reports/`; older ones are deleted after each run. |
+| `report.smoke_test` | `false` | `true` = open one real test issue at the end of each run to verify issue reporting. Keep `false` in normal operation. |
 | `schedule.cron` | `0 0 * * *` | Informational only — the cron in `.github/workflows/antibot.yaml` is what GitHub actually runs. Keep the two in sync. |
 
 Usernames in whitelist/blacklist are matched case-insensitively.

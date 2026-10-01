@@ -160,9 +160,10 @@ func (c *GitHubClient) OpenIssue(ctx context.Context, repo, title, body string) 
 }
 
 // smokeTestIssue verifies the issue-reporting path end-to-end by creating a
-// real issue. Enabled with ANTIBOT_SMOKE_TEST=1 so scheduled runs stay quiet.
+// real issue. Toggled by "report.smoke_test" in config.json; keep it false for
+// scheduled runs or every run will open a test issue.
 func smokeTestIssue(gh *GitHubClient, cfg Config) {
-	if os.Getenv("ANTIBOT_SMOKE_TEST") != "1" {
+	if !cfg.Report.SmokeTest {
 		return
 	}
 	if cfg.Report.IssueRepo == "" {
