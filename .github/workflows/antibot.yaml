@@ -1,11 +1,11 @@
-name: 'Antibot'
+name: "Antibot"
 
 on:
   workflow_dispatch:
   schedule:
     # Keep in sync with "schedule.cron" in config.json (GitHub Actions only
     # honors the cron declared here). Currently weekly: Sunday 00:00 UTC.
-    - cron: '0 0 * * 0'
+    - cron: "0 0 * * 0"
 
 jobs:
   antibot:
@@ -18,12 +18,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: "1.24"
       - name: Block bot abusers
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
+          ANTIBOT_SMOKE_TEST: "1"
         run: bash scripts/run.sh
       - uses: stefanzweifel/git-auto-commit-action@v7
         with:
-          commit_message: 'Antibot report + keep alive'
+          commit_message: "Antibot report + keep alive"
           commit_author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
